@@ -1,0 +1,139 @@
+@import "tailwindcss";
+
+@theme {
+  --color-cyber-bg: #030712;
+  --color-cyber-panel: #0b0f19;
+  --color-cyber-border: #1e293b;
+  --color-cyber-green: #10b981;
+  --color-cyber-blue: #06b6d4;
+  --color-cyber-orange: #f59e0b;
+  --color-cyber-red: #ef4444;
+}
+
+/* Base custom resets */
+html, body {
+  background-color: var(--color-cyber-bg) !important;
+  color: #e2e8f0;
+  font-family: 'Courier New', Courier, monospace, system-ui, -apple-system, sans-serif;
+  overflow-x: hidden;
+}
+
+/* Custom Scrollbar for Terminal aesthetic */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #070a13;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}
+
+/* Glowing Animations */
+@keyframes cyberPulseGreen {
+  0%, 100% { box-shadow: 0 0 4px #10b981, inset 0 0 2px #10b981; border-color: #10b981; }
+  50% { box-shadow: 0 0 12px #10b981, inset 0 0 6px #10b981; border-color: #34d399; }
+}
+
+@keyframes cyberPulseOrange {
+  0%, 100% { box-shadow: 0 0 4px #f59e0b, inset 0 0 2px #f59e0b; border-color: #f59e0b; }
+  50% { box-shadow: 0 0 12px #f59e0b, inset 0 0 6px #f59e0b; border-color: #fbbf24; }
+}
+
+@keyframes cyberPulseRed {
+  0%, 100% { box-shadow: 0 0 4px #ef4444, inset 0 0 2px #ef4444; border-color: #ef4444; }
+  50% { box-shadow: 0 0 16px #ef4444, inset 0 0 8px #ef4444; border-color: #f87171; }
+}
+
+@keyframes cyberPulsePurple {
+  0%, 100% { box-shadow: 0 0 4px #a855f7, inset 0 0 2px #a855f7; border-color: #a855f7; }
+  50% { box-shadow: 0 0 16px #a855f7, inset 0 0 8px #a855f7; border-color: #c084fc; }
+}
+
+@keyframes scanline {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100%); }
+}
+
+@keyframes glitch {
+  0% { transform: translate(0) }
+  20% { transform: translate(-2px, 2px) }
+  40% { transform: translate(-2px, -2px) }
+  60% { transform: translate(2px, 2px) }
+  80% { transform: translate(2px, -2px) }
+  100% { transform: translate(0) }
+}
+
+/* Custom CSS classes */
+.cyber-glow-green {
+  animation: cyberPulseGreen 2s infinite;
+}
+
+.cyber-glow-orange {
+  animation: cyberPulseOrange 2s infinite;
+}
+
+.cyber-glow-red {
+  animation: cyberPulseRed 1.5s infinite;
+}
+
+.cyber-glow-purple {
+  animation: cyberPulsePurple 1.5s infinite;
+}
+
+.cyber-grid {
+  background-size: 40px 40px;
+  background-image: 
+    linear-gradient(to right, rgba(30, 41, 59, 0.2) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(30, 41, 59, 0.2) 1px, transparent 1px);
+}
+
+.cyber-scanlines::after {
+  content: " ";
+  display: block;
+  position: absolute;
+  top: 0; left: 0; bottom: 0; right: 0;
+  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+  z-index: 999;
+  background-size: 100% 4px, 6px 100%;
+  pointer-events: none;
+}
+
+.cyber-scanline {
+  position: absolute;
+  top: 0; left: 0; width: 100%; height: 100%;
+  background: linear-gradient(
+    to bottom,
+    rgba(255,255,255,0) 0%,
+    rgba(6, 182, 212, 0.05) 10%,
+    rgba(255,255,255,0) 20%
+  );
+  animation: scanline 8s linear infinite;
+  pointer-events: none;
+  z-index: 100;
+}
+
+.glitch-text:hover {
+  animation: glitch 0.3s linear infinite;
+}
+
+/* Custom neon text glows */
+.text-glow-blue {
+  text-shadow: 0 0 5px rgba(6, 182, 212, 0.6), 0 0 10px rgba(6, 182, 212, 0.4);
+}
+
+.text-glow-red {
+  text-shadow: 0 0 5px rgba(239, 68, 68, 0.6), 0 0 10px rgba(239, 68, 68, 0.4);
+}
+
+.text-glow-green {
+  text-shadow: 0 0 5px rgba(16, 185, 129, 0.6), 0 0 10px rgba(16, 185, 129, 0.4);
+}
