@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { OnAppInstallRequest, TriggerResponse } from '@devvit/web/shared';
-import { context } from '@devvit/web/server';
+import { context, reddit } from '@devvit/web/server';
 import { createPost } from '../core/post';
 import { getThread, saveThread, addLog, transitionRiskScore } from '../core/storage';
 import { analyzeCommentToxicity, calculateRiskScore, generateAISummaryAndRecommendations } from '../core/riskEngine';
@@ -76,6 +76,18 @@ triggers.post('/on-post-submit', async (c) => {
       slowModeEnabled: false,
       locked: false,
       quarantined: false,
+      threatLevel: 'stable',
+      threatHistory: [
+        { timestamp: Date.now(), threatLevel: 'stable', riskScore: 10, trigger: 'thread created' }
+      ],
+      escalationProbability: 0,
+      escalationConfidence: 'LOW',
+      escalationFactors: [],
+      clusterDetected: false,
+      commentClusters: [],
+      recoveryState: 'none',
+      targetRiskScore: 10,
+      lastUpdatedAt: Date.now(),
     };
 
     await saveThread(newThread);
@@ -103,24 +115,51 @@ triggers.post('/on-comment-submit', async (c) => {
 
     let thread = await getThread(postId);
     if (!thread) {
-      // Lazy init thread if not tracked yet
+      // Lazy init thread if not tracked yet, try to fetch real post info
+      let title = 'Monitored Reddit Discussion';
+      let postAuthor = 'unknown';
+      let postCreatedAt = Date.now() - 600000;
+      let isLocked = false;
+      try {
+        const t3Id: `t3_${string}` = `t3_${postId.replace(/^t3_/, '')}`;
+        const realPost = await reddit.getPostById(t3Id);
+        title = realPost.title;
+        postAuthor = realPost.authorName ?? 'unknown';
+        postCreatedAt = realPost.createdAt.getTime();
+        isLocked = realPost.locked;
+      } catch (err) {
+        console.warn(`[on-comment-submit] Could not fetch post metadata for lazy init: ${String(err)}`);
+      }
+
       thread = {
         id: postId,
-        title: 'Monitored Reddit Discussion',
-        author: 'unknown',
-        createdAt: Date.now() - 600000,
+        title,
+        author: postAuthor,
+        createdAt: postCreatedAt,
         riskScore: 10,
         toxicity: 0,
         replyVelocity: 1.0,
         reports: 0,
         repeatOffendersCount: 0,
         keywordVolatility: 0,
-        status: 'calm',
+        status: isLocked ? 'locked' : 'calm',
         recentComments: [],
         metricsHistory: [{ timestamp: Date.now() - 300000, riskScore: 10, toxicity: 0, replyVelocity: 0 }],
         slowModeEnabled: false,
-        locked: false,
+        locked: isLocked,
         quarantined: false,
+        threatLevel: 'stable',
+        threatHistory: [
+          { timestamp: Date.now() - 300000, threatLevel: 'stable', riskScore: 10, trigger: 'passive monitoring' }
+        ],
+        escalationProbability: 0,
+        escalationConfidence: 'LOW',
+        escalationFactors: [],
+        clusterDetected: false,
+        commentClusters: [],
+        recoveryState: 'none',
+        targetRiskScore: 10,
+        lastUpdatedAt: Date.now(),
       };
     }
 

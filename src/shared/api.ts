@@ -115,7 +115,8 @@ export type DashboardData = {
   systemLogs: string[];
   simulationActive: boolean;
   simulationScene: number;
-  username: string;
+  username?: string;
+  isModerator?: boolean;
 };
 
 export type InitResponse = {

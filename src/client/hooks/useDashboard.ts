@@ -3,7 +3,7 @@ import type { DashboardData, ThreadState, InitResponse, ActionResponse, Simulati
 
 export const useDashboard = () => {
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
-  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+  const [activeThreadId, setActiveThreadIdRaw] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [actionPending, setActionPending] = useState<boolean>(false);
   const [simPending, setSimPending] = useState<boolean>(false);
@@ -20,9 +20,14 @@ export const useDashboard = () => {
           setDashboardData(data.dashboardData);
           setLoading(false);
           if (data.dashboardData.threads.length > 0) {
-            const firstThread = data.dashboardData.threads[0];
-            if (firstThread) {
-              setActiveThreadId(firstThread.id);
+            // Find the first REAL live thread (not default/sim)
+            const firstRealThread = data.dashboardData.threads.find(
+              (t) => t.id !== 't3_default_discussion' && t.id !== 't3_simulated_debate'
+            );
+            if (firstRealThread) {
+              setActiveThreadIdRaw(firstRealThread.id);
+            } else if (data.dashboardData.threads[0]) {
+              setActiveThreadIdRaw(data.dashboardData.threads[0].id);
             }
           }
         }
@@ -76,6 +81,35 @@ export const useDashboard = () => {
 
   // Find currently active thread state
   const activeThread = dashboardData?.threads.find((t) => t.id === activeThreadId) || null;
+
+  const setActiveThreadId = useCallback(async (id: string | null) => {
+    setActiveThreadIdRaw(id);
+    if (!id) return;
+    
+    // Fetch fresh thread data instantly
+    try {
+      const res = await fetch(`/api/thread/${id}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const freshThread: ThreadState = await res.json();
+      
+      setDashboardData((prev) => {
+        if (!prev) return prev;
+        const threadIndex = prev.threads.findIndex(t => t.id === id);
+        const newThreads = [...prev.threads];
+        if (threadIndex >= 0) {
+          newThreads[threadIndex] = freshThread;
+        } else {
+          newThreads.push(freshThread);
+        }
+        return {
+          ...prev,
+          threads: newThreads,
+        };
+      });
+    } catch (err) {
+      console.error(`Failed to fetch fresh thread telemetry for ${id}:`, err);
+    }
+  }, []);
 
   // Execute a moderation action
   const executeAction = useCallback(
@@ -136,7 +170,7 @@ export const useDashboard = () => {
           // Set active thread to simulated debate thread during simulation
           const hasSimThread = data.dashboardData.threads.some((t) => t.id === 't3_simulated_debate');
           if (hasSimThread) {
-            setActiveThreadId('t3_simulated_debate');
+            setActiveThreadIdRaw('t3_simulated_debate');
           }
         }
       } catch (err) {
@@ -160,9 +194,13 @@ export const useDashboard = () => {
       if (data.success) {
         setDashboardData(data.dashboardData);
         if (data.dashboardData.threads.length > 0) {
-          const firstThread = data.dashboardData.threads[0];
-          if (firstThread) {
-            setActiveThreadId(firstThread.id);
+          const firstRealThread = data.dashboardData.threads.find(
+            (t) => t.id !== 't3_default_discussion' && t.id !== 't3_simulated_debate'
+          );
+          if (firstRealThread) {
+            setActiveThreadIdRaw(firstRealThread.id);
+          } else if (data.dashboardData.threads[0]) {
+            setActiveThreadIdRaw(data.dashboardData.threads[0].id);
           }
         }
       }

@@ -7,6 +7,17 @@ import {
   THREAT_LEVEL_ORDER,
 } from './riskEngine';
 
+
+const getDashboardKey = () => {
+  const sub = context.subredditName || 'unknown';
+  return `rshield:${sub}:dashboard`;
+};
+
+const getThreadKey = (id: string) => {
+  const sub = context.subredditName || 'unknown';
+  return `rshield:${sub}:thread:${id}`;
+};
+
 const DEFAULT_HEALTH: SubredditHealth = {
   healthScore: 98,
   activeAlertsCount: 0,
@@ -109,12 +120,13 @@ const getInitialDashboard = (username: string): DashboardData => {
   };
 
   return {
-    subredditName: context.subredditName || 'r/rshield_dev',
+    subredditName: `r/${context.subredditName || 'unknown'}`, 
+    isModerator: false,
     health: DEFAULT_HEALTH,
     threads: [defaultThread],
     systemLogs: [
       `[${new Date().toISOString().slice(11, 19)}] rShield AI Core initialized.`,
-      `[${new Date().toISOString().slice(11, 19)}] Tracking active subreddit r/${context.subredditName || 'rshield_dev'}.`,
+      `[${new Date().toISOString().slice(11, 19)}] Tracking active subreddit r/${context.subredditName || 'unknown'}.`,
     ],
     simulationActive: false,
     simulationScene: 1,
@@ -124,12 +136,12 @@ const getInitialDashboard = (username: string): DashboardData => {
 
 export const getDashboardData = async (username: string): Promise<DashboardData> => {
   try {
-    const raw = await redis.get('rshield_dashboard');
+    const raw = await redis.get(getDashboardKey());
     if (!raw) {
       const initial = getInitialDashboard(username);
-      await redis.set('rshield_dashboard', JSON.stringify(initial));
+      await redis.set(getDashboardKey(), JSON.stringify(initial));
       for (const t of initial.threads) {
-        await redis.set(`rshield_thread:${t.id}`, JSON.stringify(t));
+        await redis.set(getThreadKey(t.id), JSON.stringify(t));
       }
       return initial;
     }
@@ -206,7 +218,7 @@ const computeHealthMetrics = (threads: ThreadState[], existingHealth: SubredditH
 };
 
 export const saveDashboardData = async (data: DashboardData): Promise<void> => {
-  await redis.set('rshield_dashboard', JSON.stringify(data));
+  await redis.set(getDashboardKey(), JSON.stringify(data));
 };
 
 const getThreatChangeTrigger = (
@@ -314,7 +326,7 @@ export const transitionRiskScore = (thread: ThreadState, elapsedMs: number) => {
 
 export const getThread = async (postId: string): Promise<ThreadState | null> => {
   try {
-    const raw = await redis.get(`rshield_thread:${postId}`);
+    const raw = await redis.get(getThreadKey(postId));
     if (!raw) return null;
     const thread: ThreadState = JSON.parse(raw);
 
@@ -337,7 +349,7 @@ export const getThread = async (postId: string): Promise<ThreadState | null> => 
     thread.escalationFactors = factors;
 
     // Save transitioned state
-    await redis.set(`rshield_thread:${postId}`, JSON.stringify(thread));
+    await redis.set(getThreadKey(postId), JSON.stringify(thread));
 
     return thread;
   } catch (error) {
@@ -371,7 +383,7 @@ export const saveThread = async (thread: ThreadState): Promise<void> => {
   thread.escalationConfidence = confidence;
   thread.escalationFactors = factors;
 
-  await redis.set(`rshield_thread:${thread.id}`, JSON.stringify(thread));
+  await redis.set(getThreadKey(thread.id), JSON.stringify(thread));
 
   const dashboard = await getDashboardData('anonymous');
   const index = dashboard.threads.findIndex((t) => t.id === thread.id);
@@ -402,7 +414,7 @@ export const setSimulationScene = async (scene: number): Promise<DashboardData> 
   const simThreadId = 't3_simulated_debate';
   const now = Date.now();
 
-  const rawThread = await redis.get(`rshield_thread:${simThreadId}`);
+  const rawThread = await redis.get(getThreadKey(simThreadId));
   let startRisk = 10;
   let startThreatHistory: ThreatHistoryEntry[] = [];
   if (rawThread) {
@@ -712,7 +724,7 @@ export const mergeScannedThreadsIntoDashboard = async (
   scannedThreads: ThreadState[]
 ): Promise<void> => {
   try {
-    const raw = await redis.get('rshield_dashboard');
+    const raw = await redis.get(getDashboardKey());
     if (!raw) {
       // Dashboard not yet initialized — scanned threads will be saved individually
       // via saveThread calls inside the scanner itself; nothing to merge yet.
@@ -737,7 +749,7 @@ export const mergeScannedThreadsIntoDashboard = async (
             existing.locked = scanned.locked;
             existing.status = scanned.locked ? 'locked' : existing.status;
             // Persist the refreshed individual thread state too
-            await redis.set(`rshield_thread:${existing.id}`, JSON.stringify(existing));
+            await redis.set(getThreadKey(existing.id), JSON.stringify(existing));
             changed = true;
           }
         }
@@ -756,7 +768,7 @@ export const mergeScannedThreadsIntoDashboard = async (
         if (b.id === 't3_simulated_debate' && dashboard.simulationActive) return 1;
         return b.riskScore - a.riskScore;
       });
-      await redis.set('rshield_dashboard', JSON.stringify(dashboard));
+      await redis.set(getDashboardKey(), JSON.stringify(dashboard));
     }
   } catch (err) {
     console.error('[mergeScannedThreadsIntoDashboard] Error:', err);

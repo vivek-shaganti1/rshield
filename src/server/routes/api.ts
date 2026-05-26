@@ -3,6 +3,7 @@ import { context, reddit, redis } from '@devvit/web/server';
 import { getDashboardData, getThread, saveThread, addLog, setSimulationScene, saveDashboardData, transitionRiskScore, mergeScannedThreadsIntoDashboard } from '../core/storage';
 import { generateAISummaryAndRecommendations, analyzeCommentToxicity } from '../core/riskEngine';
 import { scanSubredditPosts } from '../core/subredditScanner';
+import { isCurrentUserModerator } from '../auth/modGuard';
 import type {
   InitResponse,
   ActionResponse,
@@ -59,12 +60,15 @@ api.get('/init', async (c) => {
       type: 'init',
       postId: context.postId || 'no_post_id',
       username,
-      dashboardData: data,
+      dashboardData: {
+        ...data,
+        isModerator: await isCurrentUserModerator(),
+      },
     });
   } catch (error) {
     console.error('API /init error:', error);
     const mockData: DashboardData = {
-      subredditName: context.subredditName || 'r/rshield_dev',
+      subredditName: `r/${context.subredditName || 'unknown'}`,
       health: { healthScore: 98, activeAlertsCount: 0, moderatorActionsCount: 0, totalThreadsTracked: 0, status: 'calm' },
       threads: [],
       systemLogs: ['Failed to load database. Loading fallback system dashboard.'],
@@ -76,7 +80,10 @@ api.get('/init', async (c) => {
       type: 'init',
       postId: context.postId || 'no_post_id',
       username: 'Moderator',
-      dashboardData: mockData,
+      dashboardData: {
+        ...mockData,
+        isModerator: false,
+      },
     });
   }
 });
@@ -87,7 +94,11 @@ api.get('/dashboard', async (c) => {
     // Live scan on every poll (frontend polls every 4s)
     await runScannerAndMerge();
     const data = await getDashboardData(username);
-    return c.json<DashboardData>(data);
+    const dashboard = {
+      ...data,
+      isModerator: await isCurrentUserModerator(),
+    };
+    return c.json(dashboard);
   } catch (error) {
     console.error('API /dashboard error:', error);
     return c.json({ error: 'Failed to retrieve dashboard' }, 500);
@@ -97,6 +108,10 @@ api.get('/dashboard', async (c) => {
 // ─── On-demand subreddit rescan ─────────────────────────────────────────────
 api.post('/scan', async (c) => {
   try {
+    const isMod = await isCurrentUserModerator();
+    if (!isMod) {
+      return c.json({ success: false, message: 'Unauthorized' }, 403);
+    }
     const scannedThreads = await scanSubredditPosts();
     if (scannedThreads.length > 0) {
       await mergeScannedThreadsIntoDashboard(scannedThreads);
@@ -132,13 +147,14 @@ api.get('/verify', async (c) => {
   };
 
   // Test Redis connectivity
+  const subredditName = context.subredditName || 'unknown';
   try {
-    await redis.set('rshield_verify_ping', 'pong');
-    const val = await redis.get('rshield_verify_ping');
+    await redis.set(`rshield:${subredditName}:verify_ping`, 'pong');
+    const val = await redis.get(`rshield:${subredditName}:verify_ping`);
     if (val === 'pong') {
       checks.redis = { status: 'ok', detail: 'Redis read/write verified' };
     }
-    await redis.del('rshield_verify_ping');
+    await redis.del(`rshield:${subredditName}:verify_ping`);
   } catch (err) {
     checks.redis = { status: 'fail', detail: `Redis error: ${String(err)}` };
   }
@@ -179,8 +195,13 @@ api.get('/verify', async (c) => {
 
 // ─── Moderation Action Endpoint ────────────────────────────────────────────────
 api.post('/thread/:postId/action', async (c) => {
-  const postId = c.req.param('postId');
   try {
+    const isMod = await isCurrentUserModerator();
+    if (!isMod) {
+      return c.json<ActionResponse>({ success: false, message: 'Unauthorized: Mod privileges required.' }, 403);
+    }
+    
+    const postId = c.req.param('postId');
     const { action } = await c.req.json<ActionPayload>();
     const thread = await getThread(postId);
     const username = (await reddit.getCurrentUsername()) || 'Moderator';
@@ -218,7 +239,8 @@ api.post('/thread/:postId/action', async (c) => {
           redditApiResult.detail = `Reddit post ${t3Id} locked successfully`;
         } catch (err) {
           redditApiResult.detail = `Reddit API lock failed: ${String(err)}`;
-          console.log('Reddit API call lock failed:', err);
+          console.error('Reddit API call lock failed:', err);
+          return c.json<ActionResponse>({ success: false, message: redditApiResult.detail }, 500);
         }
       }
 
@@ -240,7 +262,8 @@ api.post('/thread/:postId/action', async (c) => {
           redditApiResult.detail = `Reddit post ${t3Id} unlocked successfully`;
         } catch (err) {
           redditApiResult.detail = `Reddit API unlock failed: ${String(err)}`;
-          console.log('Reddit API call unlock failed:', err);
+          console.error('Reddit API call unlock failed:', err);
+          return c.json<ActionResponse>({ success: false, message: redditApiResult.detail }, 500);
         }
       }
 
@@ -334,6 +357,10 @@ api.post('/thread/:postId/action', async (c) => {
 
 api.post('/simulation/step', async (c) => {
   try {
+    const isMod = await isCurrentUserModerator();
+    if (!isMod) {
+      return c.json({ success: false, message: 'Unauthorized' }, 403);
+    }
     const { scene } = await c.req.json<SimulationStepPayload>();
     const dashboard = await setSimulationScene(scene);
     return c.json<SimulationResponse>({
@@ -347,7 +374,7 @@ api.post('/simulation/step', async (c) => {
       success: false,
       message: String(error),
       dashboardData: {
-        subredditName: context.subredditName || 'r/rshield_dev',
+        subredditName: `r/${context.subredditName || 'unknown'}`,
         health: { healthScore: 50, activeAlertsCount: 0, moderatorActionsCount: 0, totalThreadsTracked: 0, status: 'calm' },
         threads: [],
         systemLogs: ['Simulation failed to initialize.'],
@@ -361,8 +388,14 @@ api.post('/simulation/step', async (c) => {
 
 api.post('/simulation/reset', async (c) => {
   try {
-    await redis.del('rshield_dashboard');
-    await redis.del('rshield_thread:t3_simulated_debate');
+    const isMod = await isCurrentUserModerator();
+    if (!isMod) {
+      return c.json({ success: false, message: 'Unauthorized' }, 403);
+    }
+    const subredditName = context.subredditName || 'unknown';
+    // Delete existing live and simulated dashboard states for this subreddit
+    await redis.del(`rshield:${subredditName}:dashboard`);
+    await redis.del(`rshield:${subredditName}:thread:t3_simulated_debate`);
     
     const username = (await reddit.getCurrentUsername()) || 'Moderator';
     const data = await getDashboardData(username);

@@ -19,6 +19,8 @@ export const App = () => {
     rescan,
   } = useDashboard();
 
+  const [isScanning, setIsScanning] = useState(false);
+
   const [consoleMsg, setConsoleMsg] = useState<string | null>(null);
 
   if (loading || !dashboardData) {
@@ -342,11 +344,15 @@ export const App = () => {
               <div className="flex items-center gap-2">
                 <span className="text-[10px] text-slate-500">TRACKING: {threads.filter(t => !t.id.includes('simulated') && !t.id.includes('default')).length} LIVE</span>
                 <button
-                  onClick={() => void rescan()}
+                  onClick={async () => {
+                    setIsScanning(true);
+                    try { await rescan(); } finally { setIsScanning(false); }
+                  }}
                   title="Force rescan subreddit"
-                  className="text-[9px] px-2 py-0.5 rounded border border-cyan-800/60 bg-cyan-950/20 text-cyan-400 hover:bg-cyan-900/30 uppercase tracking-wider transition-all"
+                  disabled={isScanning}
+                  className={`p-1.5 rounded transition-colors ${isScanning ? 'bg-cyan-900/50 text-cyan-300 animate-pulse' : 'hover:bg-slate-800 text-slate-500 hover:text-cyan-400'} cursor-pointer`}
                 >
-                  ⟳ SCAN
+                  <span className={isScanning ? 'animate-spin inline-block' : ''}>↻</span>
                 </button>
               </div>
             </div>
@@ -713,10 +719,21 @@ export const App = () => {
                 </div>
 
                 {/* Action Controls Deck (5 cols) */}
-                <div className="md:col-span-5 border border-slate-800 bg-[#070b13]/90 rounded p-4 flex flex-col justify-between backdrop-blur-sm">
-                  <div className="text-[10px] text-cyan-400 font-bold uppercase tracking-widest">🛠 INTERVENTION COMMANDS</div>
+                <div className="md:col-span-5 border border-slate-800 bg-[#070b13]/90 rounded p-4 flex flex-col justify-between backdrop-blur-sm relative">
+                  <div className="text-[10px] text-cyan-400 font-bold uppercase tracking-widest flex justify-between">
+                    <span>🛠 INTERVENTION COMMANDS</span>
+                    {!dashboardData?.isModerator && (
+                      <span className="text-red-400 bg-red-950/40 border border-red-900/60 px-1.5 py-0.5 rounded shadow-[0_0_5px_rgba(239,68,68,0.2)]">READ-ONLY</span>
+                    )}
+                  </div>
                   
                   <div className="flex flex-col gap-2 mt-3 flex-1 justify-center">
+                    {!dashboardData?.isModerator && (
+                      <div className="absolute inset-0 z-10 bg-black/60 backdrop-blur-[1px] flex flex-col items-center justify-center rounded border border-red-900/40">
+                        <span className="text-red-500 font-bold tracking-widest text-sm mb-1 animate-pulse">ACCESS DENIED</span>
+                        <span className="text-slate-400 text-[10px] uppercase text-center px-4">Moderator privileges required to execute interventions.</span>
+                      </div>
+                    )}
                     {/* Lock / Unlock Thread */}
                     {activeThread.locked ? (
                       <button
@@ -851,11 +868,21 @@ export const App = () => {
             </>
           ) : (
             <div className="border border-slate-800 bg-[#070b13]/90 rounded p-8 flex flex-col items-center justify-center text-center flex-1 backdrop-blur-sm">
-              <span className="text-4xl">🛡</span>
-              <h2 className="text-sm font-bold text-slate-400 mt-4 uppercase">NO THREAD TARGET SELECT</h2>
-              <p className="text-xs text-slate-600 mt-1 max-w-sm font-sans">
-                Select an active discussion thread from the left monitor feed to run predictive assessments and execute intervention policies.
+              <span className="text-4xl animate-pulse">🛡</span>
+              <h2 className="text-sm font-bold text-slate-400 mt-4 uppercase tracking-widest">LIVE MODERATION FEED READY</h2>
+              <p className="text-xs text-slate-600 mt-2 max-w-sm font-sans leading-relaxed">
+                rShield is actively monitoring this subreddit. Select a thread from the monitor feed to view real-time telemetry, toxic exchanges, and execute containment actions.
               </p>
+              <button 
+                onClick={async () => {
+                  setIsScanning(true);
+                  try { await rescan(); } finally { setIsScanning(false); }
+                }}
+                disabled={isScanning}
+                className="mt-6 px-4 py-2 bg-cyan-950/40 border border-cyan-900/50 text-cyan-400 text-xs font-bold uppercase tracking-wider rounded hover:bg-cyan-900/60 transition-colors cursor-pointer"
+              >
+                {isScanning ? 'Scanning Live Threads...' : 'Force Manual Scan'}
+              </button>
             </div>
           )}
         </section>
